@@ -4,25 +4,25 @@
 
 *Some Science Olympiad parameters/rules are not relevant to this code, and may have been omitted from the following descriptions.*
 
-**Robot Parameters:**
+## Robot Parameters
 Must completely fit in 30cm x 30cm square (no height limit)
 A 1/4" to 3/8" dowel must be attached to the front of the robot
 
-**Track Parameters:**
+## Track Parameters
 Track must be 2m x 2m, split into (16) 50cm x 50cm imaginary zones
 Starting point to be placed on track perimeter, centered in a zone
 Target point must be placed in the center of a zone
 (8) random zone lines will be obstacles, with a penalty given for touching
 Up to (3) zones will be "bonus zones," with a bonus given for entering
 
-**Run Details:**
+## Run Details
 A random target time between 50 and 75 seconds is determined for each run
 Obstacle touch penalties can only be given once per obstacle
 Obstacles can be fully removed before a run for a penalty of 35 points
 Bonus zones must be entered "dowel-first" to be awarded points
 Bonus zones points can only be awarded once per bonus zone
 
-**Scoring:**
+## Scoring
 Time Score + Distance Score + Gate Bonus + Penalties
 
 Time Score:
