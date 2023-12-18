@@ -44,7 +44,7 @@ Otherwise...
 
 Time Score = run time - target time
 
-Hence, there is a larger penalty for "faster" times
+*Hence, there is a larger penalty for "faster" times*
 
 Distance Score: +1 point for each cm between the robot dowel and the target point
 
