@@ -1,8 +1,10 @@
 import math
+import time
 import pygame
 import random
 import sys
 from board import Board
+from judge import Judge
 from robot import Robot
 
 # Initialize Pygame
@@ -12,8 +14,6 @@ pygame.init()
 white = (255, 255, 255)
 black = (0, 0, 0)
 red = (255, 0, 0)
-green = (53, 94, 59)
-brown = (165, 42, 42)
 
 # set up fonts
 font = pygame.font.Font(None, 36)
@@ -37,23 +37,18 @@ pygame.display.set_caption("Robot Tour")
 
 # create board instance
 grid_size = 4
-blockades = [
-    (2, "A"),
-    (5, "B"),
-    (8, "C"),
-    (11, "D"),
-    (13, "A"),
-    (14, "B"),
-    (16, "C"),
-    (3, "D"),
-]
+blockades = {
+    (2, "A"): False,
+    (5, "B"): False,
+    (8, "C"): False,
+    (11, "D"): False,
+    (13, "A"): False,
+    (14, "B"): False,
+    (16, "C"): False,
+    (3, "D"): False,
+}
 
 board = Board(window, blockades)
-
-# Start scoring
-score = 100
-zone_scores = {zone: False for zone in range(1, board.get_grid_size() ** 2 + 1)}
-contact_penalty = False
 
 # Timer variables
 # Random target time between 50 and 75 seconds
@@ -61,9 +56,22 @@ target_time = random.randint(50, 75) * 1000
 timer_running = False
 start_time = 0
 
+# create judge
+judge = Judge(board, robot, start_time, target_time)
 
-def is_collision(board: Board, robot: Robot):
-    # Check if the new position collides with blockades or the outside of the grid
+# Start scoring
+zone_scores = {zone: False for zone in range(1, board.get_grid_size() ** 2 + 1)}
+
+
+def is_collision(board: Board, robot: Robot, x, y) -> int:
+    """
+    Determines if there is a collision between the robot and the board's border or blockades
+
+    param board: Board object
+    param robot: Robot object
+
+    return: collision type - 1 for blockade, 2 for border, 0 for no collision
+    """
 
     cell_size = board.get_cell_size()
     grid_size = board.get_grid_size()
@@ -71,9 +79,18 @@ def is_collision(board: Board, robot: Robot):
     starting_point_x, starting_point_y = board.get_starting_point()
 
     robot_size = robot.get_size()
-    x, y = robot.get_location()
 
-    for location in board.get_blockades():
+    # Check if the robot is outside the grid
+    if ((abs(x - starting_point_x) > 20) and abs((y - starting_point_y) > 20)) and (
+        x < grid_start_x
+        or x + robot_size > window_width - grid_start_x
+        or y < grid_start_y
+        or y + robot_size > window_height - grid_start_y
+    ):
+        return 2
+
+    # Check if the robot is hitting a blockade
+    for location in board.get_blockades().keys():
         bx = (location[0] - 1) % grid_size
         by = (location[0] - 1) // grid_size
 
@@ -84,7 +101,7 @@ def is_collision(board: Board, robot: Robot):
             and y < by * cell_size + grid_start_y + 5
             and y + robot_size > by * cell_size + grid_start_y
         ):
-            return ("blockade", location)
+            return 1
         elif (
             location[1] == "B"
             and x < (bx + 1) * cell_size + grid_start_x + 5
@@ -92,7 +109,7 @@ def is_collision(board: Board, robot: Robot):
             and y < (by + 1) * cell_size + grid_start_y
             and y + robot_size > by * cell_size + grid_start_y
         ):
-            return ("blockade", location)
+            return 1
         elif (
             location[1] == "C"
             and x < bx * cell_size + grid_start_x
@@ -100,7 +117,7 @@ def is_collision(board: Board, robot: Robot):
             and y < (by + 1) * cell_size + grid_start_y
             and y + robot_size > (by + 1) * cell_size + grid_start_y
         ):
-            return ("blockade", location)
+            return 1
         elif (
             location[1] == "D"
             and x < bx * cell_size + grid_start_x + 5
@@ -108,78 +125,68 @@ def is_collision(board: Board, robot: Robot):
             and y < by * cell_size + grid_start_y + 5
             and y + robot_size > by * cell_size + grid_start_y
         ):
-            return ("blockade", location)
+            return 1
 
-    # Check if the new position is outside the grid
-    if ((abs(x - starting_point_x) > 20) and abs((y - starting_point_y) > 20)) and (
-        x < grid_start_x
-        or x + robot_size > window_width - grid_start_x
-        or y < grid_start_y
-        or y + robot_size > window_height - grid_start_y
-    ):
-        return ("outside", None)
-
-    return (None, None)
+    return 0
 
 
-def set_starting_angle(board: Board, robot: Robot):
-    zone, side = board.get_starting_edge()
+def end_run(board: Board, judge: Judge, target_time: int, winner_text: str):
+    """
+    Function to end the run and display the final score
 
-    if zone in [5, 9] or (zone in [1, 13] and side == "side"):
-        angle = 0
+    param board: Board object
+    param judge: Judge object
+    param target_time: Target time for the run
+    param winner_text: Text to display when the run ends
 
-    elif zone in [8, 12] or (zone in [4, 16] and side == "side"):
-        angle = 180
+    return: final score of the run
+    """
 
-    elif zone in [2, 3] or (zone in [1, 4] and side == "top"):
-        angle = 90
+    score = judge.get_final_score()
 
-    elif zone in [14, 15] or (zone in [13, 16] and side == "top"):
-        angle = 270
+    # Display "Winner!" text and end the game
+    if winner_text is None:
+        winner_text = font.render("Run over", True, black)
+    board.window.blit(
+        winner_text,
+        (board.window.get_width() // 2 - 50, board.window.get_height() // 2 - 18),
+    )
 
-    robot.set_angle(angle)
+    # Display the target time and final score
+    target_time_text2 = timer_font.render(
+        f"Target Time: {round(target_time / 1000, 2)} seconds", True, black
+    )
+    final_score_text = timer_font.render(f"Final Score: {max(score, 0)}", True, black)
 
-    return None
+    board.window.blit(
+        target_time_text2,
+        (board.window.get_width() // 2 - 90, board.window.get_height() // 2 + 18),
+    )
+    board.window.blit(
+        final_score_text,
+        (board.window.get_width() // 2 - 80, board.window.get_height() // 2 + 48),
+    )
 
+    # Update the display before quitting
+    pygame.display.flip()
 
-def set_starting_point(board: Board, robot: Robot):
-    zone, side = board.get_starting_edge()
-    grid_size = board.grid_size
-    cell_size = board.cell_size
-    grid_start_x, grid_start_y = board.grid_start_x, board.grid_start_y
+    # Wait for 5 seconds (5000 milliseconds)
+    pygame.time.wait(5000)
 
-    if zone in [5, 9] or (zone in [1, 13] and side == "side"):
-        starting_point = (
-            grid_start_x,
-            grid_start_y + (cell_size * ((zone - 1) % grid_size) + cell_size / 2),
-        )
+    # Quit the game
+    pygame.quit()
 
-    elif zone in [8, 12] or (zone in [4, 16] and side == "side"):
-        starting_point = (
-            grid_start_x + grid_size * cell_size,
-            grid_start_y + (cell_size * ((zone - 1) % grid_size) + cell_size / 2),
-        )
+    # Print the final score
+    print(score)
 
-    elif zone in [2, 3] or (zone in [1, 4] and side == "top"):
-        starting_point = (
-            grid_start_x + (cell_size * ((zone - 1) % grid_size) + cell_size / 2),
-            grid_start_y,
-        )
-
-    elif zone in [14, 15] or (zone in [13, 16] and side == "top"):
-        starting_point = (
-            grid_start_x + (cell_size * ((zone - 1) % grid_size) + cell_size / 2),
-            grid_start_y + grid_size * cell_size,
-        )
-
-    robot.set_location(starting_point[0], starting_point[1])
-
-    return None
+    return score
 
 
-set_starting_angle(board, robot)
-set_starting_point(board, robot)
-
+# robot setup
+robot_start_x, robot_start_y = board.get_starting_point()
+robot.set_location(robot_start_x, robot_start_y)
+robot.set_angle(board.get_starting_angle())
+last_movement = time.time()
 
 # Main game loop
 while True:
@@ -190,13 +197,22 @@ while True:
 
         # Check for key events to adjust speed
         if event.type == pygame.KEYDOWN:
+            # Increase speed when 's' key is pressed
             if event.key == pygame.K_s:
-                robot.increase_speed()  # Increase speed when 's' key is pressed
+                robot.increase_speed()
+
+            # Decrease speed when 'd' key is pressed (minimum speed is 1)
             elif event.key == pygame.K_d and robot.get_speed() > 1:
-                robot.decrease_speed()  # Decrease speed when 'd' key is pressed (minimum speed is 1)
+                robot.decrease_speed()
+
+            # End run when 'r' key is pressed
+            elif event.key == pygame.K_r:
+                end_run(board, judge, target_time, winner_text)
 
     # Check for arrow key presses
     keys = pygame.key.get_pressed()
+
+    # Left and right control the robot angle
     if keys[pygame.K_LEFT]:
         if not timer_running:
             timer_running = True
@@ -207,7 +223,9 @@ while True:
             timer_running = True
             start_time = pygame.time.get_ticks()
         robot.increase_angle()
-    if keys[pygame.K_UP]:
+
+    # Up and down control the robot movement
+    if keys[pygame.K_UP] or keys[pygame.K_DOWN]:
         if not timer_running:
             timer_running = True
             start_time = pygame.time.get_ticks()
@@ -215,30 +233,19 @@ while True:
         # Calculate the movement based on the front angle
         new_x = robot_x + robot.get_speed() * math.cos(math.radians(robot.get_angle()))
         new_y = robot_y + robot.get_speed() * math.sin(math.radians(robot.get_angle()))
-        collision_type, collision_location = is_collision(board, robot)
-        robot.set_location(new_x, new_y)
 
-        if collision_type is None:
+        # TODO: check instead to see if the robot would collide with the blockade,
+        # but don't actually move the robot
+        # mark any hit blockades so that the contact penalty is not duplicated
+
+        collision = is_collision(board, robot, new_x, new_y)
+
+        if collision == 0:
             robot.set_location(new_x, new_y)
-        elif collision_type == "blockade" and not contact_penalty:
-            score += 50
-            contact_penalty = True
+            last_movement = time.time()
 
-    if keys[pygame.K_DOWN]:
-        if not timer_running:
-            timer_running = True
-            start_time = pygame.time.get_ticks()
-
-        # Calculate the movement based on the front angle (opposite direction)
-        new_x = robot_x - robot.get_speed() * math.cos(math.radians(robot.get_angle()))
-        new_y = robot_y - robot.get_speed() * math.sin(math.radians(robot.get_angle()))
-
-        collision_type, collision_location = is_collision(board, robot)
-        if collision_type is None:
-            robot.set_location(new_x, new_y)
-        elif collision_type == "blockade" and not contact_penalty:
-            score += 50
-            contact_penalty = True
+        elif collision == 1:
+            judge.update_score(50)
 
     # Clear the screen
     board.window.fill(white)
@@ -284,51 +291,6 @@ while True:
 
     target_point = board.get_target_point()
 
-    # Check if the robot has reached the target point
-    if (
-        robot_x < target_point[0] + robot.size
-        and robot_x + robot.size > target_point[0]
-        and robot_y < target_point[1] + robot.size
-        and robot_y + robot.size > target_point[1]
-    ):
-        # Calculate the elapsed time
-        elapsed_time = pygame.time.get_ticks() - start_time
-
-        # Display "Winner!" text and end the game
-        if winner_text is None:
-            winner_text = font.render("Run over", True, black)
-        board.window.blit(
-            winner_text, (board.window_width // 2 - 50, board.window_height // 2 - 18)
-        )
-
-        # Calculate the score based on time difference
-        if target_time > elapsed_time:
-            score += ((target_time - elapsed_time) / 1000) * 2
-        else:
-            score += (elapsed_time - target_time) / 1000
-
-        # Display the target time and final score
-        target_time_text2 = timer_font.render(
-            f"Target Time: {round(target_time / 1000, 2)} seconds", True, black
-        )
-        final_score_text = timer_font.render(
-            f"Final Score: {max(score, 0)}", True, black
-        )
-
-        board.window.blit(
-            target_time_text2,
-            (board.window_width // 2 - 90, board.window_height // 2 + 18),
-        )
-        board.window.blit(
-            final_score_text,
-            (board.window_width // 2 - 80, board.window_height // 2 + 48),
-        )
-
-        pygame.display.flip()  # Update the display before quitting
-        pygame.time.wait(5000)  # Wait for 5 seconds (5000 milliseconds)
-        pygame.quit()
-        sys.exit()
-
     # Check if the robot is in a highlighted zone and award points
     current_zone = (
         (robot_x - board.grid_start_x) // board.cell_size
@@ -337,7 +299,7 @@ while True:
     )
 
     if current_zone in bonus_zones and not zone_scores[current_zone]:
-        score -= 15
+        judge.update_score(-15)
         zone_scores[current_zone] = True
 
     # Draw the timer
@@ -351,54 +313,8 @@ while True:
         board.window.blit(timer_text, (10, 10))
 
         # Draw the score
-        score_text = score_font.render(f"Score: {score}", True, black)
+        score_text = score_font.render(f"Score: {judge.get_score()}", True, black)
         board.window.blit(score_text, (10, 40))
-
-    # Check if the robot has hit a blockade
-    for location in blockades:
-        x = (location[0] - 1) % board.grid_size
-        y = (location[0] - 1) // board.grid_size
-
-        if (
-            location[1] == "A"
-            and robot_x < (x + 1) * board.cell_size + board.grid_start_x
-            and robot_x + robot.size > x * board.cell_size + board.grid_start_x
-            and robot_y < y * board.cell_size + board.grid_start_y + 5
-            and robot_y + robot.size > y * board.cell_size + board.grid_start_y
-            and not contact_penalty
-        ):
-            score += 50
-            contact_penalty = True
-        elif (
-            location[1] == "B"
-            and robot_x < (x + 1) * board.cell_size + board.grid_start_x + 5
-            and robot_x + robot.size > (x + 1) * board.cell_size + board.grid_start_x
-            and robot_y < (y + 1) * board.cell_size + board.grid_start_y
-            and robot_y + robot.size > y * board.cell_size + board.grid_start_y
-            and not contact_penalty
-        ):
-            score += 50
-            contact_penalty = True
-        elif (
-            location[1] == "C"
-            and robot_x < x * board.cell_size + board.grid_start_x
-            and robot_x + robot.size > (x + 1) * board.cell_size + board.grid_start_x
-            and robot_y < (y + 1) * board.cell_size + board.grid_start_y
-            and robot_y + robot.size > (y + 1) * board.cell_size + board.grid_start_y
-            and not contact_penalty
-        ):
-            score += 50
-            contact_penalty = True
-        elif (
-            location[1] == "D"
-            and robot_x < x * board.cell_size + board.grid_start_x + 5
-            and robot_x + robot.size > x * board.cell_size + board.grid_start_x
-            and robot_y < y * board.cell_size + board.grid_start_y + 5
-            and robot_y + robot.size > y * board.cell_size + board.grid_start_y
-            and not contact_penalty
-        ):
-            score += 50
-            contact_penalty = True
 
     # Update the display
     pygame.display.flip()

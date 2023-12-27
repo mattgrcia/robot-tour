@@ -17,6 +17,7 @@ class Board:
         ) // 2
 
         self.set_starting_zone()
+        self.set_starting_point()
         self.set_target_zone()
         self.set_target_point()
         self.set_bonus_zones()
@@ -43,6 +44,9 @@ class Board:
     def get_starting_zone(self):
         return self.starting_zone
 
+    def get_starting_point(self):
+        return self.starting_point
+
     def get_starting_edge(self):
         starting_zone = self.starting_zone
         starting_side = None
@@ -51,7 +55,7 @@ class Board:
 
         return starting_zone, starting_side
 
-    def get_starting_point(self):
+    def set_starting_point(self):
         starting_zone, starting_side = self.get_starting_edge()
 
         if starting_zone in [5, 9] or (
@@ -102,7 +106,24 @@ class Board:
                 self.grid_start_y + self.grid_size * self.cell_size,
             )
 
-        return starting_point
+        self.starting_point = starting_point
+
+    def get_starting_angle(self):
+        zone, side = self.get_starting_edge()
+
+        if zone in [5, 9] or (zone in [1, 13] and side == "side"):
+            angle = 0
+
+        elif zone in [8, 12] or (zone in [4, 16] and side == "side"):
+            angle = 180
+
+        elif zone in [2, 3] or (zone in [1, 4] and side == "top"):
+            angle = 90
+
+        elif zone in [14, 15] or (zone in [13, 16] and side == "top"):
+            angle = 270
+
+        return angle
 
     def set_target_zone(self):
         self.target_zone = self.starting_zone
@@ -161,8 +182,8 @@ class Board:
         return None
 
     # Function to draw blockades
-    def draw_blockades(self, blockade_locations):
-        for location in blockade_locations:
+    def draw_blockades(self, blockades: dict):
+        for location in blockades.keys():
             x = (location[0] - 1) % self.grid_size
             y = (location[0] - 1) // self.grid_size
 
