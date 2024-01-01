@@ -12,6 +12,7 @@ class Robot:
         self.dowel_width = 2
         self.speed = 1
         self.angle = starting_angle
+        self.entered_grid = False
 
     def get_size(self) -> int:
         return self.size
@@ -35,6 +36,12 @@ class Robot:
 
         else:
             self.angle -= interval
+
+    def get_entered_grid(self) -> bool:
+        return self.entered_grid
+
+    def set_entered_grid(self) -> None:
+        self.entered_grid = True
 
     def get_location(self) -> (int, int):
         return (self.x, self.y)
