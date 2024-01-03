@@ -1,8 +1,10 @@
 import math
-import time
-import pygame
 import random
 import sys
+import time
+import numpy as np
+import pygame
+from torchvision import transforms
 from board import Board
 from judge import Judge
 from robot import Robot
@@ -28,37 +30,64 @@ class Game:
         # Main game loop
         self.clock = pygame.time.Clock()
 
-        # Create robot instance
-        self.robot = Robot()
-
         # Create the Pygame window
         self.window_width = 1000
         self.window_height = 1000
         self.window = pygame.display.set_mode((self.window_width, self.window_height))
         pygame.display.set_caption("Robot Tour")
 
-        # Create board instance
+        # Create a surface for drawing
+        self.surface = pygame.Surface((self.window_width, self.window_height))
+
+        # Create board
         self.grid_size = 4
-        self.board = Board(self.window)
+        self.board = Board(self.window, self.surface)
+        self.target_point = self.board.get_target_point()
 
-        # Highlight specified zones
-        self.board.set_bonus_zones()
+        # Create robot
+        self.robot = Robot(self.surface)
+        self.robot.set_location(self.board.get_starting_point())
+        self.robot.set_angle(self.board.get_starting_angle())
 
-        self.set_up_robot()
-
-        # Timer variables
-        # Random target time between 50 and 75 seconds
+        # Timer variables - random target time between 50 and 75 seconds
         self.target_time = random.randint(50, 75) * 1000
-        self.timer_running = False
-        start_time = 0
+        self.timer_running = True
+        self.last_movement = pygame.time.get_ticks()
 
         # Create judge
-        self.judge = Judge(self.board, self.robot, start_time, self.target_time)
+        self.judge = Judge(self.board, self.robot, self.target_time)
 
-        # Start scoring
-        self.zone_scores = {
-            zone: False for zone in range(1, self.board.get_grid_size() ** 2 + 1)
-        }
+        self.game_over = False
+
+    def is_over(self) -> bool:
+        return self.game_over
+
+    @staticmethod
+    def preprocess_image(surface, output_size=(64, 64), normalize=True):
+        # Convert Pygame surface to a NumPy array
+        image = np.array(pygame.surfarray.pixels3d(surface))
+
+        # Define transformation pipeline
+        transform_pipeline = transforms.Compose(
+            [
+                transforms.ToPILImage(),  # Convert array to PIL image
+                transforms.Resize(output_size),  # Resize to the desired size
+                # Uncomment the next line if you want to convert to grayscale
+                # transforms.Grayscale(),
+                transforms.ToTensor(),  # Convert to PyTorch tensor
+            ]
+        )
+
+        if normalize:
+            # Normalize the image to [0, 1]
+            transform_pipeline.transforms.append(
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+            )
+
+        # Apply transformations
+        image = transform_pipeline(image)
+
+        return image
 
     def is_collision(self, x, y) -> int:
         """
@@ -141,7 +170,7 @@ class Game:
 
         return 0
 
-    def end_run(self):
+    def end_run(self) -> float:
         global END_RUN_TEXT
         # TODO: fix font and styling
         """
@@ -160,11 +189,11 @@ class Game:
         # Display text and end the game
         if END_RUN_TEXT is None:
             END_RUN_TEXT = self.font.render("Run over", True, BLACK)
-        self.board.window.blit(
+        self.surface.blit(
             END_RUN_TEXT,
             (
-                self.board.window.get_width() // 2 - 50,
-                self.board.window.get_height() // 2 - 18,
+                self.surface.get_width() // 2 - 50,
+                self.surface.get_height() // 2 - 18,
             ),
         )
 
@@ -179,15 +208,15 @@ class Game:
         self.board.window.blit(
             target_time_text2,
             (
-                self.board.window.get_width() // 2 - 90,
-                self.board.window.get_height() // 2 + 18,
+                self.surface.get_width() // 2 - 90,
+                self.surface.get_height() // 2 + 18,
             ),
         )
         self.board.window.blit(
             final_score_text,
             (
-                self.board.window.get_width() // 2 - 80,
-                self.board.window.get_height() // 2 + 48,
+                self.surface.get_width() // 2 - 80,
+                self.surface.get_height() // 2 + 48,
             ),
         )
 
@@ -200,175 +229,183 @@ class Game:
         # Quit the game
         pygame.quit()
 
+        self.game_over = True
+
         return score
 
-    def set_up_robot(self):
-        robot_start_x, robot_start_y = self.board.get_starting_point()
-        self.robot.set_location(robot_start_x, robot_start_y)
-        self.robot.set_angle(self.board.get_starting_angle())
-        self.last_movement = time.time()
+    def get_state(self) -> dict:
+        time_to_target = np.array(pygame.time.get_ticks() - self.target_time)
+        board_image = self.preprocess_image(self.surface)
+
+        return {
+            "board_image": board_image,
+            "time": time_to_target,
+        }
+
+    def render(self) -> None:
+        # Clear the screen
+        self.surface.fill(WHITE)
+
+        # Draw the target endpoint
+        pygame.draw.circle(self.surface, RED, self.board.target_point, 10)
+
+        # Draw the speed information
+        speed_text = self.font.render(f"Speed: {self.robot.get_speed()}", True, BLACK)
+        self.window.blit(speed_text, (10, 70))
+
+        # Draw the time information
+        target_time_text = self.font.render(
+            f"Target time: {self.target_time / 1000}", True, BLACK
+        )
+        self.window.blit(target_time_text, (10, 100))
+
+        self.judge.check_bonus_zones()
+
+        # Draw the board and robot
+        self.board.draw()
+        self.robot.draw()
+
+        # Blit the render_surface onto the main window
+        self.window.blit(self.surface, (0, 0))
+        pygame.display.flip()  # Update the entire display
+
+        # Draw the timer
+        if self.timer_running:
+            elapsed_time = pygame.time.get_ticks()
+            # End the run if the robot has not entered the grid after 10 seconds
+            if (not self.robot.get_entered_grid()) and ((elapsed_time // 1000) > 10):
+                return self.end_run()
+
+            # End the run if the robot does not move forward or backward for three seconds
+            if ((pygame.time.get_ticks() - self.last_movement) // 1000) > 3:
+                return self.end_run()
+
+            elapsed_time_sec = elapsed_time // 1000
+            elapsed_time_ms = elapsed_time % 1000
+            timer_text = self.timer_font.render(
+                f"Time: {elapsed_time_sec}.{elapsed_time_ms} seconds", True, BLACK
+            )
+            self.window.blit(timer_text, (10, 10))
+
+            # Draw the score
+            score_text = self.score_font.render(
+                f"Score: {self.judge.get_score()}", True, BLACK
+            )
+            self.window.blit(score_text, (10, 40))
+
+        # Update the display
+        pygame.display.flip()
+
+        # Control the frame rate
+        self.clock.tick(60)
+
+    def move_forward(self) -> None:
+        robot_location = self.robot.get_location()
+        robot_x = robot_location[0]
+        robot_y = robot_location[1]
+
+        # Calculate the movement based on the front angle
+        new_x = robot_x + self.robot.get_speed() * math.cos(
+            math.radians(self.robot.get_angle())
+        )
+        new_y = robot_y + self.robot.get_speed() * math.sin(
+            math.radians(self.robot.get_angle())
+        )
+
+        collision = self.is_collision(new_x, new_y)
+
+        if collision == 0:
+            self.robot.set_location((new_x, new_y))
+            self.last_movement = pygame.time.get_ticks()
+
+        elif collision == 1:
+            self.judge.update_score(50)
 
         return None
 
-    def run(self):
-        # Main game loop
-        while True:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
+    def move_backward(self) -> None:
+        robot_location = self.robot.get_location()
+        robot_x = robot_location[0]
+        robot_y = robot_location[1]
 
-                # Check for key events to adjust speed
-                if event.type == pygame.KEYDOWN:
-                    # Increase speed when 's' key is pressed
-                    if event.key == pygame.K_s:
-                        self.robot.increase_speed()
+        # Calculate the movement based on the front angle
+        new_x = robot_x - self.robot.get_speed() * math.cos(
+            math.radians(self.robot.get_angle())
+        )
+        new_y = robot_y - self.robot.get_speed() * math.sin(
+            math.radians(self.robot.get_angle())
+        )
 
-                    # Decrease speed when 'd' key is pressed (minimum speed is 1)
-                    elif event.key == pygame.K_d and self.robot.get_speed() > 1:
-                        self.robot.decrease_speed()
+        collision = self.is_collision(new_x, new_y)
 
-                    # End run when 'r' key is pressed
-                    elif event.key == pygame.K_r:
-                        return self.end_run()
+        if collision == 0:
+            self.robot.set_location((new_x, new_y))
+            self.last_movement = pygame.time.get_ticks()
 
-            # Check for arrow key presses
-            keys = pygame.key.get_pressed()
+        elif collision == 1:
+            self.judge.update_score(50)
 
-            # Left and right control the robot angle
-            if keys[pygame.K_LEFT]:
-                if not self.timer_running:
-                    self.timer_running = True
-                    start_time = pygame.time.get_ticks()
-                self.robot.decrease_angle()
-            if keys[pygame.K_RIGHT]:
-                if not self.timer_running:
-                    self.timer_running = True
-                    start_time = pygame.time.get_ticks()
-                self.robot.increase_angle()
+        return None
 
-            # Up and down control the robot movement
-            if keys[pygame.K_UP]:
-                if not self.timer_running:
-                    self.timer_running = True
-                    start_time = pygame.time.get_ticks()
+    def increase_angle(self) -> None:
+        self.run_timer()
+        self.robot.increase_angle()
 
-                # Calculate the movement based on the front angle
-                new_x = robot_x + self.robot.get_speed() * math.cos(
-                    math.radians(self.robot.get_angle())
-                )
-                new_y = robot_y + self.robot.get_speed() * math.sin(
-                    math.radians(self.robot.get_angle())
-                )
+        return None
 
-                collision = self.is_collision(new_x, new_y)
+    def decrease_angle(self) -> None:
+        self.run_timer()
+        self.robot.decrease_angle()
 
-                if collision == 0:
-                    self.robot.set_location(new_x, new_y)
-                    self.last_movement = time.time()
+        return None
 
-                elif collision == 1:
-                    self.judge.update_score(50)
+    def run(self, mode="human") -> None:
+        if mode == "human":
+            # Main game loop
+            while True:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
 
-            if keys[pygame.K_DOWN]:
-                if not self.timer_running:
-                    self.timer_running = True
-                    start_time = pygame.time.get_ticks()
+                    # Check for key events to adjust speed
+                    if event.type == pygame.KEYDOWN:
+                        # Increase speed when 's' key is pressed
+                        if event.key == pygame.K_s:
+                            self.robot.increase_speed()
 
-                # Calculate the movement based on the front angle
-                new_x = robot_x - self.robot.get_speed() * math.cos(
-                    math.radians(self.robot.get_angle())
-                )
-                new_y = robot_y - self.robot.get_speed() * math.sin(
-                    math.radians(self.robot.get_angle())
-                )
+                        # Decrease speed when 'd' key is pressed (minimum speed is 1)
+                        elif event.key == pygame.K_d and self.robot.get_speed() > 1:
+                            self.robot.decrease_speed()
 
-                collision = self.is_collision(new_x, new_y)
+                        # End run when 'r' key is pressed
+                        elif event.key == pygame.K_r:
+                            return self.end_run()
 
-                if collision == 0:
-                    self.robot.set_location(new_x, new_y)
-                    self.last_movement = time.time()
+                # Check for arrow key presses
+                keys = pygame.key.get_pressed()
 
-                elif collision == 1:
-                    self.judge.update_score(50)
+                # Left and right control the robot angle
+                if keys[pygame.K_LEFT]:
+                    self.decrease_angle()
+                if keys[pygame.K_RIGHT]:
+                    self.increase_angle()
 
-            # Clear the screen
-            self.board.window.fill(WHITE)
+                # Up and down control the robot movement
+                if keys[pygame.K_UP]:
+                    self.move_forward()
+                if keys[pygame.K_DOWN]:
+                    self.move_backward()
 
-            # Draw the target endpoint
-            pygame.draw.circle(self.board.window, RED, self.board.target_point, 10)
+                # Check if the robot is in a bonus zone
+                self.judge.check_bonus_zones()
 
-            # Draw the speed information
-            speed_text = self.font.render(
-                f"Speed: {self.robot.get_speed()}", True, BLACK
-            )
-            self.board.window.blit(speed_text, (10, 70))
+                self.render()
 
-            # Draw the speed information
-            target_time_text = self.font.render(
-                f"Target time: {self.target_time / 1000}", True, BLACK
-            )
-            self.board.window.blit(target_time_text, (10, 100))
+                return None
 
-            # Draw the board
-            self.board.draw()
+        else:
+            self.judge.check_bonus_zones()
+            self.render()
 
-            # Get location of robot
-            robot_location = self.robot.get_location()
-            robot_x = robot_location[0]
-            robot_y = robot_location[1]
-
-            # Draw the robots
-            rotated_robot = pygame.transform.rotate(self.robot.image, self.robot.angle)
-            rotated_rect = rotated_robot.get_rect(
-                center=(robot_x + self.robot.size / 2, robot_y + self.robot.size / 2)
-            )
-            self.board.window.blit(rotated_robot, rotated_rect.topleft)
-
-            # Draw the front of the robot
-            pygame.draw.line(
-                self.board.window,
-                RED,
-                self.robot.get_front_location(),
-                self.robot.get_dowel_location(),
-                self.robot.get_dowel_width(),
-            )
-
-            self.target_point = self.board.get_target_point()
-
-            # Check if the robot is in a highlighted zone and award points
-            current_zone = (
-                (robot_x - self.board.grid_start_x) // self.board.cell_size
-                + ((robot_y - self.board.grid_start_y) // self.board.cell_size)
-                * self.board.grid_size
-                + 1
-            )
-
-            if (
-                current_zone in self.board.get_bonus_zones()
-                and not self.board.get_bonus_zones()[current_zone]
-            ):
-                self.judge.update_score(-15)
-                self.board.hit_bonus_zone(current_zone)
-
-            # Draw the timer
-            if self.timer_running:
-                elapsed_time = pygame.time.get_ticks() - start_time
-                elapsed_time_sec = elapsed_time // 1000
-                elapsed_time_ms = elapsed_time % 1000
-                timer_text = self.timer_font.render(
-                    f"Time: {elapsed_time_sec}.{elapsed_time_ms} seconds", True, BLACK
-                )
-                self.board.window.blit(timer_text, (10, 10))
-
-                # Draw the score
-                score_text = self.score_font.render(
-                    f"Score: {self.judge.get_score()}", True, BLACK
-                )
-                self.board.window.blit(score_text, (10, 40))
-
-            # Update the display
-            pygame.display.flip()
-
-            # Control the frame rate
-            self.clock.tick(60)
+            return None

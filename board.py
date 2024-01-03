@@ -5,19 +5,26 @@ import random
 
 class Board:
     def __init__(
-        self, window, blockade_size=5, blockades={}, grid_size=4, cell_size=100
+        self,
+        window: pygame.display.set_mode,
+        surface: pygame.Surface,
+        blockade_size=5,
+        blockades={},
+        grid_size=4,
+        cell_size=100,
     ) -> None:
         # Set up grid dimensions and spacing
         self.window = window
+        self.surface = surface
 
         self.grid_size = grid_size
         self.cell_size = cell_size
         self.blockade_size = blockade_size
         self.grid_start_x = (
-            self.window.get_width() - self.grid_size * self.cell_size
+            self.surface.get_width() - self.grid_size * self.cell_size
         ) // 2
         self.grid_start_y = (
-            self.window.get_height() - self.grid_size * self.cell_size
+            self.surface.get_height() - self.grid_size * self.cell_size
         ) // 2
 
         self.set_starting_zone()
@@ -71,7 +78,7 @@ class Board:
 
         return starting_zone, starting_side
 
-    def set_starting_point(self):
+    def set_starting_point(self) -> None:
         starting_zone, starting_side = self.get_starting_edge()
 
         if starting_zone in [5, 9] or (
@@ -209,7 +216,7 @@ class Board:
                 x = col * self.cell_size + self.grid_start_x
                 y = row * self.cell_size + self.grid_start_y
                 pygame.draw.rect(
-                    self.window,
+                    self.surface,
                     (0, 0, 255),
                     (x, y, self.cell_size, self.cell_size),
                     1,
@@ -226,13 +233,13 @@ class Board:
                 if zone_number in bonus_zones:
                     if bonus_zones[zone_number]:
                         pygame.draw.rect(
-                            self.window,
+                            self.surface,
                             (50, 180, 65),
                             (x + 1, y + 1, self.cell_size - 1, self.cell_size - 1),
                         )
                     else:
                         pygame.draw.rect(
-                            self.window,
+                            self.surface,
                             (53, 94, 59),
                             (x + 1, y + 1, self.cell_size - 1, self.cell_size - 1),
                         )
@@ -283,14 +290,17 @@ class Board:
                 )
 
             if self.blockades[location]:
-                pygame.draw.line(self.window, (255, 0, 0), start_point, end_point, 5)
+                pygame.draw.line(self.surface, (255, 0, 0), start_point, end_point, 5)
             else:
                 pygame.draw.line(
-                    self.window, (202, 164, 114), start_point, end_point, 5
+                    self.surface, (202, 164, 114), start_point, end_point, 5
                 )
 
         return None
 
-    def draw(self):
+    def draw(self) -> None:
+        # Draw the grid and blockades directly onto the render_surface
         self.draw_grid()
         self.draw_blockades()
+
+        return None

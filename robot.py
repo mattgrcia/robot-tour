@@ -1,9 +1,12 @@
 import math
 import pygame
 
+RED = (255, 0, 0)
+
 
 class Robot:
-    def __init__(self, starting_angle=0, size=30) -> None:
+    def __init__(self, surface: pygame.Surface, starting_angle=0, size=30) -> None:
+        self.surface = surface
         self.size = size
         self.image = pygame.image.load("robot.png")
         self.image = pygame.transform.scale(self.image, (self.size, self.size))
@@ -46,8 +49,8 @@ class Robot:
     def get_location(self) -> (int, int):
         return (self.x, self.y)
 
-    def set_location(self, x, y) -> None:
-        self.x, self.y = x, y
+    def set_location(self, coordinates) -> None:
+        self.x, self.y = coordinates
 
     def get_speed(self) -> int:
         return self.speed
@@ -81,3 +84,22 @@ class Robot:
 
     def get_dowel_width(self) -> int:
         return self.dowel_width
+
+    def draw(self):
+        # Draw the robots
+        rotated_robot = pygame.transform.rotate(self.image, self.angle)
+        rotated_rect = rotated_robot.get_rect(
+            center=(self.x + self.size / 2, self.y + self.size / 2)
+        )
+
+        # Blit the rotated image onto the surface
+        self.surface.blit(rotated_robot, rotated_rect.topleft)
+
+        # Draw the front of the robot
+        pygame.draw.line(
+            self.surface,
+            RED,
+            self.get_front_location(),
+            self.get_dowel_location(),
+            self.dowel_width,
+        )
