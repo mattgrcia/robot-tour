@@ -4,6 +4,8 @@
 
 *Some Science Olympiad parameters/rules are not relevant to this code, and may have been omitted from the following descriptions.*
 
+Once completed, the model will be used to take in a user-provided real-life setup and produce commands that guide a Raspberry Pi robot to its best score possible.
+
 ## Robot Parameters
 Must completely fit in 30cm x 30cm square (no height limit)
 
